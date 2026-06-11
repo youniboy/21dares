@@ -86,6 +86,20 @@ export default function HomePage() {
         <p className="text-xs text-white/25 text-center">
           Play in the same room or anywhere in the world.
         </p>
+
+        <p className="text-xs text-white/20 text-center">
+          © 21 Dares &nbsp;·&nbsp; made with{' '}
+          <span className="text-red-400/70">♥</span>
+          {' '}by{' '}
+          <a
+            href="https://github.com/youniboy"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-white/35 hover:text-white/60 underline underline-offset-2 transition-colors"
+          >
+            youniboy
+          </a>
+        </p>
       </div>
 
       <CreateRoomModal isOpen={showCreate} onClose={() => setShowCreate(false)} />
