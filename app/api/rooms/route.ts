@@ -17,8 +17,8 @@ export async function POST(req: NextRequest) {
   const { playerName, playerId, password, mode, nsfwPin } = await req.json();
   const gameMode: GameMode = (['spicy', 'mix', 'nsfw'] as GameMode[]).includes(mode) ? mode : 'normal';
 
-  if (gameMode === 'nsfw' && (!nsfwPin || nsfwPin.trim().length < 4)) {
-    return NextResponse.json({ error: 'NSFW mode requires a PIN of at least 4 characters.' }, { status: 400 });
+  if (gameMode === 'nsfw' && (!nsfwPin || !/^\d{6}$/.test(nsfwPin.trim()))) {
+    return NextResponse.json({ error: 'NSFW mode requires a 6-digit numeric PIN.' }, { status: 400 });
   }
 
   if (!playerName || !playerId) {

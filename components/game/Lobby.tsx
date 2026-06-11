@@ -9,9 +9,11 @@ interface Props {
   roomCode: string;
   onStartGame: () => void;
   onLeave: () => void;
+  roomPassword?: string;
+  roomNsfwPin?: string;
 }
 
-export default function Lobby({ gameState, myPlayerId, roomCode, onStartGame, onLeave }: Props) {
+export default function Lobby({ gameState, myPlayerId, roomCode, onStartGame, onLeave, roomPassword, roomNsfwPin }: Props) {
   const [copied, setCopied] = useState(false);
   const isHost = gameState.players.find((p) => p.id === myPlayerId)?.isHost;
   const canStart = gameState.players.length >= 2;
@@ -24,7 +26,10 @@ export default function Lobby({ gameState, myPlayerId, roomCode, onStartGame, on
 
   async function copyLink() {
     const url = `${window.location.origin}/room/${roomCode}`;
-    await navigator.clipboard.writeText(url);
+    const lines = [`🎮 Join my 21 Dares room!`, `Link: ${url}`];
+    if (roomPassword) lines.push(`Password: ${roomPassword}`);
+    if (roomNsfwPin) lines.push(`NSFW PIN: ${roomNsfwPin}`);
+    await navigator.clipboard.writeText(lines.join('\n'));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }

@@ -20,6 +20,8 @@ export default function RoomPage({ params }: Props) {
   const [error, setError] = useState('');
   const [myPlayerId] = useState(() => getOrCreatePlayerId());
   const [isAlone, setIsAlone] = useState(false);
+  const [roomPassword, setRoomPassword] = useState('');
+  const [roomNsfwPin, setRoomNsfwPin] = useState('');
   // Tracks intentional navigations so beforeunload doesn't double-fire cleanup
   const intentionalExitRef = useRef(false);
 
@@ -36,6 +38,13 @@ export default function RoomPage({ params }: Props) {
     },
     [room, code]
   );
+
+  // Read password/pin from URL params (set by CreateRoomModal after room creation)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setRoomPassword(params.get('p') ?? '');
+    setRoomNsfwPin(params.get('nsfw') ?? '');
+  }, []);
 
   // Load room on mount
   useEffect(() => {
@@ -248,6 +257,8 @@ export default function RoomPage({ params }: Props) {
         <Lobby
           gameState={game_state}
           myPlayerId={myPlayerId}
+          roomPassword={roomPassword}
+          roomNsfwPin={roomNsfwPin}
           roomCode={code}
           onStartGame={handleStartGame}
           onLeave={handleVoteToEnd}

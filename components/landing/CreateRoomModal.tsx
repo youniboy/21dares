@@ -42,7 +42,7 @@ export default function CreateRoomModal({ isOpen, onClose }: Props) {
     const trimmedName = name.trim();
     if (!trimmedName) { setError('Enter your name to continue.'); return; }
     if (trimmedName.length > 20) { setError('Name must be 20 characters or less.'); return; }
-    if (mode === 'nsfw' && nsfwPin.trim().length < 4) { setError('NSFW PIN must be at least 4 characters.'); return; }
+    if (mode === 'nsfw' && !/^\d{6}$/.test(nsfwPin.trim())) { setError('NSFW PIN must be exactly 6 digits.'); return; }
 
     setLoading(true);
     setError('');
@@ -61,7 +61,11 @@ export default function CreateRoomModal({ isOpen, onClose }: Props) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to create room');
-      router.push(`/room/${data.code}`);
+      const qs = new URLSearchParams();
+      if (password.trim()) qs.set('p', password.trim());
+      if (mode === 'nsfw' && nsfwPin.trim()) qs.set('nsfw', nsfwPin.trim());
+      const query = qs.toString();
+      router.push(`/room/${data.code}${query ? `?${query}` : ''}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
       setLoading(false);
@@ -70,7 +74,7 @@ export default function CreateRoomModal({ isOpen, onClose }: Props) {
 
   function handleCreate() {
     if (!name.trim()) { setError('Enter your name to continue.'); return; }
-    if (mode === 'nsfw' && nsfwPin.trim().length < 4) { setError('NSFW PIN must be at least 4 characters.'); return; }
+    if (mode === 'nsfw' && !/^\d{6}$/.test(nsfwPin.trim())) { setError('NSFW PIN must be exactly 6 digits.'); return; }
     if (mode === 'spicy' || mode === 'mix' || mode === 'nsfw') {
       setShowAgeGate(true);
     } else {
@@ -138,9 +142,10 @@ export default function CreateRoomModal({ isOpen, onClose }: Props) {
                   <input
                     type={showNsfwPin ? 'text' : 'password'}
                     value={nsfwPin}
-                    onChange={(e) => { setNsfwPin(e.target.value); setError(''); }}
-                    placeholder="Set a PIN (min 4 chars)..."
-                    maxLength={20}
+                    onChange={(e) => { const v = e.target.value.replace(/\D/g, '').slice(0, 6); setNsfwPin(v); setError(''); }}
+                    placeholder="6-digit PIN e.g. 042069"
+                    maxLength={6}
+                    inputMode="numeric"
                     className="w-full px-4 py-2.5 pr-12 rounded-lg text-white placeholder-white/20 text-sm outline-none border border-red-500/30 focus:border-red-500/60 transition-colors"
                     style={{ background: '#2a1010' }}
                   />
@@ -153,7 +158,7 @@ export default function CreateRoomModal({ isOpen, onClose }: Props) {
                   </button>
                 </div>
                 <p className="text-xs text-white/30 mt-1.5">
-                  Anyone joining must enter this PIN. It confirms all players are 21+.
+                  6-digit numbers only. Anyone joining must enter this PIN.
                 </p>
               </div>
             )}
@@ -203,7 +208,7 @@ export default function CreateRoomModal({ isOpen, onClose }: Props) {
 
           <button
             onClick={handleCreate}
-            disabled={loading || !name.trim() || (mode === 'nsfw' && nsfwPin.trim().length < 4)}
+            disabled={loading || !name.trim() || (mode === 'nsfw' && !/^\d{6}$/.test(nsfwPin.trim()))}
             className="w-full py-3.5 rounded-xl font-semibold text-white text-base transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ background: `linear-gradient(135deg, ${colors.border}, #4F46E5)` }}
           >
