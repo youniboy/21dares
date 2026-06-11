@@ -194,18 +194,27 @@ export default function CardConsequence({
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={previewUrl} alt="Preview" className="w-full rounded-xl max-h-40 object-cover" />
                     )}
-                    <label className="flex flex-col items-center gap-2 py-4 border-2 border-dashed rounded-xl cursor-pointer transition-colors border-white/15 hover:border-white/30">
-                      <span className="text-2xl">📷</span>
-                      <span className="text-white/50 text-sm">{uploading ? 'Uploading...' : 'Tap to choose a photo'}</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        className="sr-only"
-                        disabled={uploading}
-                        onChange={handleImageUpload}
-                      />
-                    </label>
+                    {uploading ? (
+                      <div className="flex flex-col items-center gap-2 py-4 rounded-xl border border-white/10" style={{ background: '#252532' }}>
+                        <span className="text-2xl">⏳</span>
+                        <span className="text-white/50 text-sm">Uploading...</span>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2">
+                        {/* Camera — take photo directly */}
+                        <label className="flex flex-col items-center gap-2 py-4 border-2 border-dashed rounded-xl cursor-pointer border-red-500/30">
+                          <span className="text-2xl">📷</span>
+                          <span className="text-white/60 text-xs text-center font-medium">Take<br/>Photo</span>
+                          <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={handleImageUpload} />
+                        </label>
+                        {/* Library — choose existing */}
+                        <label className="flex flex-col items-center gap-2 py-4 border-2 border-dashed rounded-xl cursor-pointer border-white/15">
+                          <span className="text-2xl">🖼️</span>
+                          <span className="text-white/60 text-xs text-center font-medium">From<br/>Library</span>
+                          <input type="file" accept="image/*" className="sr-only" onChange={handleImageUpload} />
+                        </label>
+                      </div>
+                    )}
                     {uploadError && <p className="text-xs text-red-400">{uploadError}</p>}
                   </div>
                 ) : (

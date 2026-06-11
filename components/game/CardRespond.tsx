@@ -211,24 +211,33 @@ export default function CardRespond({ card, loserName, isLoser, onSubmitResponse
                     </div>
                   )}
 
-                  <label
-                    className="flex flex-col items-center gap-2 py-5 border-2 border-dashed rounded-xl cursor-pointer transition-colors"
-                    style={{ borderColor: uploading ? theme.color : 'rgba(255,255,255,0.15)' }}
-                  >
-                    <span className="text-2xl">{uploading ? '⏳' : '📷'}</span>
-                    <span className="text-white/50 text-sm text-center leading-snug">
-                      {uploading ? 'Uploading...' : 'Tap to choose a photo or video'}
-                    </span>
-                    <span className="text-white/25 text-xs">Photo or video • max 100 MB</span>
-                    <input
-                      type="file"
-                      accept="image/*,video/*"
-                      capture="environment"
-                      className="sr-only"
-                      disabled={uploading}
-                      onChange={handleMediaUpload}
-                    />
-                  </label>
+                  {uploading ? (
+                    <div className="flex flex-col items-center gap-2 py-5 rounded-xl border border-white/10" style={{ background: '#252532' }}>
+                      <span className="text-2xl">⏳</span>
+                      <span className="text-white/50 text-sm">Uploading...</span>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      {/* Take photo/video — opens camera directly */}
+                      <label
+                        className="flex flex-col items-center gap-2 py-5 border-2 border-dashed rounded-xl cursor-pointer transition-colors"
+                        style={{ borderColor: `${theme.color}50` }}
+                      >
+                        <span className="text-2xl">📷</span>
+                        <span className="text-white/60 text-xs text-center leading-snug font-medium">Take Photo<br/>or Video</span>
+                        <input type="file" accept="image/*,video/*" capture="environment" className="sr-only" onChange={handleMediaUpload} />
+                      </label>
+                      {/* Upload from gallery/files */}
+                      <label
+                        className="flex flex-col items-center gap-2 py-5 border-2 border-dashed rounded-xl cursor-pointer transition-colors"
+                        style={{ borderColor: 'rgba(255,255,255,0.15)' }}
+                      >
+                        <span className="text-2xl">🖼️</span>
+                        <span className="text-white/60 text-xs text-center leading-snug font-medium">From<br/>Library</span>
+                        <input type="file" accept="image/*,video/*" className="sr-only" onChange={handleMediaUpload} />
+                      </label>
+                    </div>
+                  )}
 
                   {uploadError && <p className="text-xs text-red-400 text-center">{uploadError}</p>}
 

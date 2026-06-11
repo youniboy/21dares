@@ -19,6 +19,7 @@ export default function RoomPage({ params }: Props) {
   const [room, setRoom] = useState<Room | null>(null);
   const [error, setError] = useState('');
   const [myPlayerId] = useState(() => getOrCreatePlayerId());
+  const [isAlone, setIsAlone] = useState(false);
 
   const updateGameState = useCallback(
     async (updates: Partial<GameState>) => {
@@ -71,9 +72,17 @@ export default function RoomPage({ params }: Props) {
   // Detect if I was removed from the players list
   useEffect(() => {
     if (!room) return;
-    const stillInRoom = room.game_state.players.some((p) => p.id === myPlayerId);
+    const gs = room.game_state;
+    const stillInRoom = gs.players.some((p) => p.id === myPlayerId);
     if (!stillInRoom) {
       router.push('/?kicked=1');
+      return;
+    }
+    // Detect when I'm the last player left and the game hasn't formally ended
+    if (gs.status !== 'ended' && gs.players.length === 1) {
+      setIsAlone(true);
+      const t = setTimeout(() => router.push('/'), 3000);
+      return () => clearTimeout(t);
     }
   }, [room, myPlayerId, router]);
 
@@ -124,6 +133,36 @@ export default function RoomPage({ params }: Props) {
       }
       router.push('/');
     }
+  }
+
+  if (isAlone) {
+    return (
+      <div className="fixed inset-0 flex flex-col items-center justify-center z-50 px-6 text-center" style={{ background: '#0d0d14' }}>
+        <div className="flex flex-col items-center gap-6">
+          <div className="text-7xl animate-bounce">👋</div>
+          <div>
+            <p className="text-white font-black text-2xl">Everyone left the party</p>
+            <p className="text-white/40 text-sm mt-2">Heading back home...</p>
+          </div>
+          <div className="flex gap-2">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="w-2 h-2 rounded-full animate-pulse"
+                style={{ background: '#7C3AED', animationDelay: `${i * 0.25}s` }}
+              />
+            ))}
+          </div>
+          <button
+            onClick={() => router.push('/')}
+            className="mt-2 px-6 py-3 rounded-2xl font-semibold text-white/60 text-sm border border-white/10 transition-all active:scale-95"
+            style={{ background: '#1a1a24' }}
+          >
+            Go home now
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (error) {
