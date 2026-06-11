@@ -25,10 +25,18 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!room) return NextResponse.json({ ok: true }); // already gone
 
   const gs: GameState = room.game_state;
+  const leavingPlayer = gs.players.find((p) => p.id === playerId);
   const updatedPlayers = gs.players.filter((p) => p.id !== playerId);
+  const isHost = leavingPlayer?.isHost ?? false;
 
-  if (updatedPlayers.length === 0) {
+  // Delete the room if: host alone in lobby, last player, or host closes tab mid-game alone
+  const shouldDelete =
+    updatedPlayers.length === 0 ||
+    (isHost && gs.status === 'lobby' && gs.players.length === 1);
+
+  if (shouldDelete) {
     await supabase.from('rooms').delete().eq('code', code.toUpperCase());
+    return NextResponse.json({ ok: true });
   } else {
     const newCountingIndex = Math.min(gs.countingPlayerIndex, updatedPlayers.length - 1);
     const newLoserIndex =

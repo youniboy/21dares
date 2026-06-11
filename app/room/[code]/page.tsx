@@ -98,10 +98,7 @@ export default function RoomPage({ params }: Props) {
     // Detect when I'm the last player left mid-game (others left or were kicked)
     if (gs.status === 'playing' && gs.players.length === 1) {
       setIsAlone(true);
-      const t = setTimeout(() => {
-        intentionalExitRef.current = true;
-        router.push('/');
-      }, 3000);
+      const t = setTimeout(() => { deleteRoom(); }, 3000);
       return () => clearTimeout(t);
     }
   }, [room, myPlayerId, router]);
@@ -111,48 +108,67 @@ export default function RoomPage({ params }: Props) {
     updateGameState({ status: 'playing', phase: 'rules' });
   }
 
+  async function deleteRoom() {
+    intentionalExitRef.current = true;
+    await fetch(`/api/rooms/${code}`, { method: 'DELETE' });
+    router.push('/');
+  }
+
+  async function removeMe(gs: GameState) {
+    const updatedPlayers = gs.players.filter((p) => p.id !== myPlayerId);
+    intentionalExitRef.current = true;
+    if (updatedPlayers.length === 0) {
+      await fetch(`/api/rooms/${code}`, { method: 'DELETE' });
+    } else {
+      await fetch(`/api/rooms/${code}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          game_state: {
+            ...gs,
+            players: updatedPlayers,
+            endVotes: [],
+            countingPlayerIndex: Math.min(gs.countingPlayerIndex, updatedPlayers.length - 1),
+            loserPlayerIndex:
+              gs.loserPlayerIndex !== null && gs.loserPlayerIndex >= updatedPlayers.length
+                ? updatedPlayers.length - 1
+                : gs.loserPlayerIndex,
+          },
+        }),
+      });
+    }
+    router.push('/');
+  }
+
   async function handleVoteToEnd() {
     if (!room) return;
     const gs = room.game_state;
+    const myPlayer = gs.players.find((p) => p.id === myPlayerId);
+    const isHost = myPlayer?.isHost ?? false;
+
+    // Host alone in lobby — no one joined yet — just close the room
+    if (isHost && gs.status === 'lobby' && gs.players.length === 1) {
+      await deleteRoom();
+      return;
+    }
+
+    // Host leaves mid-game while others are still in — remove host, game continues
+    if (isHost && gs.players.length > 1) {
+      await removeMe(gs);
+      return;
+    }
+
+    // Non-host (or host alone in active game): vote to end
     const endVotes = gs.endVotes ?? [];
-    const alreadyVoted = endVotes.includes(myPlayerId);
-    if (alreadyVoted) return;
+    if (endVotes.includes(myPlayerId)) return;
 
     const newVotes = [...endVotes, myPlayerId];
     const allVoted = newVotes.length >= gs.players.length;
 
     if (allVoted) {
-      // Everyone wants to end — delete the room (realtime DELETE triggers redirect for all)
-      await fetch(`/api/rooms/${code}`, { method: 'DELETE' });
+      await deleteRoom();
     } else {
-      // Solo or partial vote — remove this player from the room
-      const updatedPlayers = gs.players.filter((p) => p.id !== myPlayerId);
-
-      if (updatedPlayers.length === 0) {
-        // Last person leaving — delete the room
-        await fetch(`/api/rooms/${code}`, { method: 'DELETE' });
-      } else {
-        // Remove voter from players, clear their vote from the list (others continue)
-        await fetch(`/api/rooms/${code}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            game_state: {
-              ...gs,
-              players: updatedPlayers,
-              endVotes: [],
-              // Fix countingPlayerIndex if it's now out of range
-              countingPlayerIndex: Math.min(gs.countingPlayerIndex, updatedPlayers.length - 1),
-              loserPlayerIndex:
-                gs.loserPlayerIndex !== null && gs.loserPlayerIndex >= updatedPlayers.length
-                  ? updatedPlayers.length - 1
-                  : gs.loserPlayerIndex,
-            },
-          }),
-        });
-      }
-      intentionalExitRef.current = true;
-      router.push('/');
+      await removeMe(gs);
     }
   }
 
@@ -175,7 +191,7 @@ export default function RoomPage({ params }: Props) {
             ))}
           </div>
           <button
-            onClick={() => { intentionalExitRef.current = true; router.push('/'); }}
+            onClick={deleteRoom}
             className="mt-2 px-6 py-3 rounded-2xl font-semibold text-white/60 text-sm border border-white/10 transition-all active:scale-95"
             style={{ background: '#1a1a24' }}
           >
