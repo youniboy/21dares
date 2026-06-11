@@ -26,6 +26,27 @@ function isVideoFile(file: File) {
   return file.type.startsWith('video/');
 }
 
+async function compressImage(file: File): Promise<File> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(img.src);
+      const MAX = 1280;
+      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(
+        (blob) => resolve(new File([blob!], 'image.jpg', { type: 'image/jpeg' })),
+        'image/jpeg',
+        0.82
+      );
+    };
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 interface Props {
   card: GameCard;
   loserName: string;
@@ -42,6 +63,7 @@ export default function CardRespond({ card, loserName, isLoser, onSubmitResponse
   const [response, setResponse] = useState(card.response || '');
   const [secondsLeft, setSecondsLeft] = useState<number>(RESPONSE_LIMIT);
   const [uploading, setUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState('');
   const [uploadError, setUploadError] = useState('');
   const [previewUrl, setPreviewUrl] = useState('');
   const [isPreviewVideo, setIsPreviewVideo] = useState(false);
@@ -69,20 +91,30 @@ export default function CardRespond({ card, loserName, isLoser, onSubmitResponse
 
     setUploading(true);
     setUploadError('');
-    const objectUrl = URL.createObjectURL(file);
-    setPreviewUrl(objectUrl);
     setIsPreviewVideo(isVideoFile(file));
+    setPreviewUrl(URL.createObjectURL(file));
 
-    const ext = file.name.split('.').pop() ?? 'bin';
+    let uploadFile = file;
+    if (!isVideoFile(file)) {
+      setUploadStatus('Compressing...');
+      uploadFile = await compressImage(file);
+    } else {
+      const mb = (file.size / 1024 / 1024).toFixed(1);
+      setUploadStatus(`Uploading ${mb} MB...`);
+    }
+
+    const ext = isVideoFile(file) ? (file.name.split('.').pop() ?? 'mp4') : 'jpg';
     const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
 
+    setUploadStatus('Uploading...');
     const { data, error } = await supabase.storage
       .from('dare-responses')
-      .upload(path, file, { upsert: true });
+      .upload(path, uploadFile, { upsert: true, contentType: uploadFile.type });
 
     if (error) {
       setUploadError('Upload failed. Try again or switch to text.');
       setUploading(false);
+      setUploadStatus('');
       setPreviewUrl('');
       return;
     }
@@ -90,6 +122,7 @@ export default function CardRespond({ card, loserName, isLoser, onSubmitResponse
     const { data: { publicUrl } } = supabase.storage.from('dare-responses').getPublicUrl(data.path);
     onSubmitResponse(publicUrl, data.path);
     setUploading(false);
+    setUploadStatus('');
   }
 
   const timerPct = (secondsLeft / RESPONSE_LIMIT) * 100;
@@ -213,8 +246,8 @@ export default function CardRespond({ card, loserName, isLoser, onSubmitResponse
 
                   {uploading ? (
                     <div className="flex flex-col items-center gap-2 py-5 rounded-xl border border-white/10" style={{ background: '#252532' }}>
-                      <span className="text-2xl">⏳</span>
-                      <span className="text-white/50 text-sm">Uploading...</span>
+                      <div className="w-6 h-6 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: theme.color, borderTopColor: 'transparent' }} />
+                      <span className="text-white/50 text-sm">{uploadStatus || 'Uploading...'}</span>
                     </div>
                   ) : (
                     <div className="grid grid-cols-2 gap-2">

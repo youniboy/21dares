@@ -6,6 +6,27 @@ import { supabase } from '@/lib/supabase';
 
 const PROOF_LIMIT = 120; // 2 minutes to submit proof
 
+async function compressImage(file: File): Promise<File> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(img.src);
+      const MAX = 1280;
+      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(
+        (blob) => resolve(new File([blob!], 'proof.jpg', { type: 'image/jpeg' })),
+        'image/jpeg',
+        0.82
+      );
+    };
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 const CARD_THEME: Record<string, { label: string; icon: string; color: string }> = {
   truth:           { label: 'Truth',         icon: '🤔', color: '#7C3AED' },
   dare:            { label: 'Dare',          icon: '🔥', color: '#DC2626' },
@@ -42,6 +63,7 @@ export default function CardConsequence({
   const [expired, setExpired] = useState(false);
   const [proofText, setProofText] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState('');
   const [uploadError, setUploadError] = useState('');
   const [previewUrl, setPreviewUrl] = useState('');
   const [proofTab, setProofTab] = useState<'image' | 'text'>('image');
@@ -77,19 +99,24 @@ export default function CardConsequence({
   async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { setUploadError('Image must be under 5 MB.'); return; }
 
     setUploading(true);
     setUploadError('');
     setPreviewUrl(URL.createObjectURL(file));
+    setUploadStatus('Compressing...');
 
-    const ext = file.name.split('.').pop() ?? 'jpg';
-    const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const compressed = await compressImage(file);
+    const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
 
-    const { data, error } = await supabase.storage.from('proofs').upload(path, file, { upsert: true });
+    setUploadStatus('Uploading...');
+    const { data, error } = await supabase.storage
+      .from('proofs')
+      .upload(path, compressed, { upsert: true, contentType: 'image/jpeg' });
+
     if (error) {
       setUploadError('Upload failed. Try again or switch to text proof.');
       setUploading(false);
+      setUploadStatus('');
       setPreviewUrl('');
       return;
     }
@@ -97,6 +124,7 @@ export default function CardConsequence({
     const { data: { publicUrl } } = supabase.storage.from('proofs').getPublicUrl(data.path);
     onSubmitProof(publicUrl);
     setUploading(false);
+    setUploadStatus('');
   }
 
   function handleSubmitText() {
@@ -196,8 +224,8 @@ export default function CardConsequence({
                     )}
                     {uploading ? (
                       <div className="flex flex-col items-center gap-2 py-4 rounded-xl border border-white/10" style={{ background: '#252532' }}>
-                        <span className="text-2xl">⏳</span>
-                        <span className="text-white/50 text-sm">Uploading...</span>
+                        <div className="w-6 h-6 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: '#DC2626', borderTopColor: 'transparent' }} />
+                        <span className="text-white/50 text-sm">{uploadStatus || 'Uploading...'}</span>
                       </div>
                     ) : (
                       <div className="grid grid-cols-2 gap-2">
