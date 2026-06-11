@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, use } from 'react';
+import { useEffect, useState, useCallback, useRef, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { getOrCreatePlayerId } from '@/lib/room-utils';
@@ -20,6 +20,8 @@ export default function RoomPage({ params }: Props) {
   const [error, setError] = useState('');
   const [myPlayerId] = useState(() => getOrCreatePlayerId());
   const [isAlone, setIsAlone] = useState(false);
+  // Tracks intentional navigations so beforeunload doesn't double-fire cleanup
+  const intentionalExitRef = useRef(false);
 
   const updateGameState = useCallback(
     async (updates: Partial<GameState>) => {
@@ -69,19 +71,37 @@ export default function RoomPage({ params }: Props) {
     return () => { supabase.removeChannel(channel); };
   }, [code, router]);
 
+  // Tab close / crash — fire-and-forget cleanup via sendBeacon
+  useEffect(() => {
+    function handleBeforeUnload() {
+      if (intentionalExitRef.current) return;
+      const blob = new Blob(
+        [JSON.stringify({ playerId: myPlayerId })],
+        { type: 'application/json' }
+      );
+      navigator.sendBeacon(`/api/rooms/${code}/leave`, blob);
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [code, myPlayerId]);
+
   // Detect if I was removed from the players list
   useEffect(() => {
     if (!room) return;
     const gs = room.game_state;
     const stillInRoom = gs.players.some((p) => p.id === myPlayerId);
     if (!stillInRoom) {
+      intentionalExitRef.current = true;
       router.push('/?kicked=1');
       return;
     }
     // Detect when I'm the last player left mid-game (others left or were kicked)
     if (gs.status === 'playing' && gs.players.length === 1) {
       setIsAlone(true);
-      const t = setTimeout(() => router.push('/'), 3000);
+      const t = setTimeout(() => {
+        intentionalExitRef.current = true;
+        router.push('/');
+      }, 3000);
       return () => clearTimeout(t);
     }
   }, [room, myPlayerId, router]);
@@ -131,6 +151,7 @@ export default function RoomPage({ params }: Props) {
           }),
         });
       }
+      intentionalExitRef.current = true;
       router.push('/');
     }
   }
@@ -154,7 +175,7 @@ export default function RoomPage({ params }: Props) {
             ))}
           </div>
           <button
-            onClick={() => router.push('/')}
+            onClick={() => { intentionalExitRef.current = true; router.push('/'); }}
             className="mt-2 px-6 py-3 rounded-2xl font-semibold text-white/60 text-sm border border-white/10 transition-all active:scale-95"
             style={{ background: '#1a1a24' }}
           >
@@ -233,7 +254,7 @@ export default function RoomPage({ params }: Props) {
             <p className="text-white/50 mt-2">Good times were had.</p>
           </div>
           <button
-            onClick={() => router.push('/')}
+            onClick={() => { intentionalExitRef.current = true; router.push('/'); }}
             className="px-6 py-3 rounded-2xl font-bold text-white border border-white/15 transition-all active:scale-95"
             style={{ background: '#1a1a24' }}
           >

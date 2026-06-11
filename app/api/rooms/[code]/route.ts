@@ -123,10 +123,19 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   return NextResponse.json({ ok: true });
 }
 
-// Update game state
+// Update game state — auto-deletes if players array becomes empty
 export async function PATCH(req: NextRequest, { params }: Params) {
   const { code } = await params;
   const { game_state } = await req.json();
+
+  if (Array.isArray(game_state?.players) && game_state.players.length === 0) {
+    const { error } = await supabase
+      .from('rooms')
+      .delete()
+      .eq('code', code.toUpperCase());
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
 
   const { error } = await supabase
     .from('rooms')

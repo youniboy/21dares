@@ -24,9 +24,18 @@ CREATE POLICY "Allow all operations on rooms"
 -- 4. Enable Realtime for the rooms table
 ALTER PUBLICATION supabase_realtime ADD TABLE public.rooms;
 
--- 5. Optional: auto-cleanup rooms older than 24 hours
--- (You can set this up as a scheduled cron job in Supabase)
--- DELETE FROM public.rooms WHERE created_at < NOW() - INTERVAL '24 hours';
+-- 5. Auto-cleanup: delete rooms with no players or older than 24 hours
+-- Run in Supabase SQL Editor → requires pg_cron extension (enabled by default on Supabase)
+SELECT cron.schedule(
+  'cleanup-stale-rooms',
+  '0 * * * *',  -- every hour
+  $$
+    DELETE FROM public.rooms
+    WHERE
+      updated_at < NOW() - INTERVAL '24 hours'
+      OR (game_state->'players')::jsonb = '[]'::jsonb;
+  $$
+);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- STORAGE: dare response media (photo/video) — deleted after judging
