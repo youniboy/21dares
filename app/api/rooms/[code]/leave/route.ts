@@ -29,10 +29,8 @@ export async function POST(req: NextRequest, { params }: Params) {
   const updatedPlayers = gs.players.filter((p) => p.id !== playerId);
   const isHost = leavingPlayer?.isHost ?? false;
 
-  // Delete the room if: host alone in lobby, last player, or host closes tab mid-game alone
-  const shouldDelete =
-    updatedPlayers.length === 0 ||
-    (isHost && gs.status === 'lobby' && gs.players.length === 1);
+  // Delete if host is alone (regardless of game status) or last player leaving
+  const shouldDelete = (isHost && gs.players.length === 1) || updatedPlayers.length === 0;
 
   if (shouldDelete) {
     await supabase.from('rooms').delete().eq('code', code.toUpperCase());

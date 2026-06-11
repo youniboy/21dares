@@ -146,19 +146,19 @@ export default function RoomPage({ params }: Props) {
     const myPlayer = gs.players.find((p) => p.id === myPlayerId);
     const isHost = myPlayer?.isHost ?? false;
 
-    // Host alone in lobby — no one joined yet — just close the room
-    if (isHost && gs.status === 'lobby' && gs.players.length === 1) {
+    // Host alone — delete room regardless of game status
+    if (isHost && gs.players.length === 1) {
       await deleteRoom();
       return;
     }
 
-    // Host leaves mid-game while others are still in — remove host, game continues
-    if (isHost && gs.players.length > 1) {
+    // Host with others still in — just remove host, game continues
+    if (isHost) {
       await removeMe(gs);
       return;
     }
 
-    // Non-host (or host alone in active game): vote to end
+    // Non-host: vote to end
     const endVotes = gs.endVotes ?? [];
     if (endVotes.includes(myPlayerId)) return;
 
