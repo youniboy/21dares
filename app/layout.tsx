@@ -64,6 +64,9 @@ export const metadata: Metadata = {
   },
   alternates: { canonical: siteUrl },
   icons: { icon: "/favicon.ico" },
+  verification: {
+    google: "1s_7YvHEPuM1vjqM4SWAY8IouwiaFbbzl764HUJNggs",
+  },
 };
 
 export const viewport: Viewport = {
