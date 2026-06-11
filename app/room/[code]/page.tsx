@@ -78,8 +78,8 @@ export default function RoomPage({ params }: Props) {
       router.push('/?kicked=1');
       return;
     }
-    // Detect when I'm the last player left and the game hasn't formally ended
-    if (gs.status !== 'ended' && gs.players.length === 1) {
+    // Detect when I'm the last player left mid-game (others left or were kicked)
+    if (gs.status === 'playing' && gs.players.length === 1) {
       setIsAlone(true);
       const t = setTimeout(() => router.push('/'), 3000);
       return () => clearTimeout(t);
