@@ -16,6 +16,7 @@ import {
   getRandomDoubleDare,
   getRandomSituation,
   getRandomBurningHouse,
+  cardKey,
 } from '@/lib/game-content';
 
 interface Props {
@@ -56,14 +57,16 @@ export default function GameBoard({ gameState, myPlayerId, onUpdateGameState }: 
   // ── Loser picks card type ────────────────────────────────────────────────
   function handleCardTypeSelected(type: CardType) {
     const now = new Date().toISOString();
+    const used = gameState.usedSuggestions ?? [];
     let card: GameCard;
     switch (type) {
-      case 'truth':         card = getRandomTruth(mode); break;
-      case 'dare':          card = getRandomDare(mode); break;
-      case 'double-dare':   card = getRandomDoubleDare(mode); break;
-      case 'situation':     card = getRandomSituation(mode); break;
-      case 'burning-house': card = getRandomBurningHouse(mode); break;
+      case 'truth':         card = getRandomTruth(mode, used); break;
+      case 'dare':          card = getRandomDare(mode, used); break;
+      case 'double-dare':   card = getRandomDoubleDare(mode, used); break;
+      case 'situation':     card = getRandomSituation(mode, used); break;
+      case 'burning-house': card = getRandomBurningHouse(mode, used); break;
     }
+    const key = cardKey(card as Parameters<typeof cardKey>[0]);
     // Record the loser's card type to prevent consecutive same choice
     const updatedPlayers = players.map((p, i) =>
       i === loserPlayerIndex ? { ...p, lastCardType: type } : p
@@ -73,6 +76,7 @@ export default function GameBoard({ gameState, myPlayerId, onUpdateGameState }: 
       currentCard: { ...card, setupStartedAt: now },
       players: updatedPlayers,
       cardSelectionStartedAt: null,
+      usedSuggestions: key ? [...used, key] : used,
     });
   }
 
@@ -121,15 +125,6 @@ export default function GameBoard({ gameState, myPlayerId, onUpdateGameState }: 
       const best = proposals.reduce((a, b) => b.votes.length > a.votes.length ? b : a);
       challenge = best.text;
     }
-    patchCard({
-      customChallenge: challenge,
-      cardPhase: 'respond',
-      respondStartedAt: new Date().toISOString(),
-    });
-  }
-
-  // ── Others send the challenge (now called by timer or manual) ────────────
-  function handleSendChallenge(challenge: string) {
     patchCard({
       customChallenge: challenge,
       cardPhase: 'respond',

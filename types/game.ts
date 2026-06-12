@@ -100,6 +100,7 @@ export interface GameState {
   pendingPlayers?: Player[];
   turnStartedAt?: string | null;
   cardSelectionStartedAt?: string | null;
+  usedSuggestions?: string[];
 }
 
 export interface Room {
