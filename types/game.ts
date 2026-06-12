@@ -21,6 +21,16 @@ export interface Player {
   name: string;
   color: string;
   isHost: boolean;
+  lastCardType?: CardType | null;
+}
+
+export interface ProposedChallenge {
+  id: string;
+  playerId: string;
+  playerName: string;
+  text: string;
+  votes: string[];
+  isPreset: boolean;
 }
 
 // Shared interaction fields added to every card
@@ -34,6 +44,9 @@ export interface CardInteraction {
   consequenceStartedAt: string | null;
   proof: string;
   mediaPath: string | null;
+  judgeVotes?: { accept: string[]; reject: string[] };
+  proposedChallenges?: ProposedChallenge[];
+  setupStartedAt?: string | null;
 }
 
 export interface TruthCard extends CardInteraction {
@@ -84,6 +97,9 @@ export interface GameState {
   endVotes: string[];
   mode: GameMode;
   nsfwPinHash?: string | null;
+  pendingPlayers?: Player[];
+  turnStartedAt?: string | null;
+  cardSelectionStartedAt?: string | null;
 }
 
 export interface Room {

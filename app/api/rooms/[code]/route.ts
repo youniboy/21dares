@@ -80,8 +80,23 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ code: room.code });
   }
 
+  // Game in progress — add to pending lobby instead of rejecting
   if (gameState.status === 'playing') {
-    return NextResponse.json({ error: 'Game already in progress.' }, { status: 400 });
+    const pendingPlayers: Player[] = gameState.pendingPlayers ?? [];
+    // Already pending
+    if (pendingPlayers.some((p: Player) => p.id === playerId)) {
+      return NextResponse.json({ code: room.code, pending: true });
+    }
+    const allColors = [...gameState.players, ...pendingPlayers].map((p: Player) => p.color);
+    const pendingPlayer: Player = {
+      id: playerId,
+      name: playerName.trim(),
+      color: assignPlayerColor(allColors),
+      isHost: false,
+    };
+    const updatedState: GameState = { ...gameState, pendingPlayers: [...pendingPlayers, pendingPlayer] };
+    await supabase.from('rooms').update({ game_state: updatedState, updated_at: new Date().toISOString() }).eq('code', code.toUpperCase());
+    return NextResponse.json({ code: room.code, pending: true });
   }
 
   const existingColors = gameState.players.map((p: Player) => p.color);

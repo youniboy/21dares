@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import type { GameState, Player } from '@/types/game';
+
+const TURN_LIMIT = 15; // seconds per turn
 
 interface Props {
   gameState: GameState;
@@ -10,17 +12,46 @@ interface Props {
 }
 
 export default function CountingGame({ gameState, myPlayerId, onAdvance }: Props) {
-  const { players, count, countingPlayerIndex, round } = gameState;
+  const { players, count, countingPlayerIndex, round, turnStartedAt } = gameState;
   const currentPlayer = players[countingPlayerIndex];
   const isMyTurn = currentPlayer?.id === myPlayerId;
   const [bounceKey, setBounceKey] = useState(count);
+  const [secondsLeft, setSecondsLeft] = useState(TURN_LIMIT);
 
   useEffect(() => {
     setBounceKey(count);
   }, [count]);
 
-  // Which numbers would each button land on?
+  const handleAutoAdvance = useCallback(() => {
+    if (!isMyTurn) return;
+    // Pick a random valid number (1-3 that doesn't exceed 21... but hitting 21 is the point)
+    const valid: (1 | 2 | 3)[] = ([1, 2, 3] as const).filter((n) => count + n <= 21);
+    if (valid.length === 0) return;
+    const pick = valid[Math.floor(Math.random() * valid.length)];
+    onAdvance(pick);
+  }, [isMyTurn, count, onAdvance]);
+
+  useEffect(() => {
+    if (!turnStartedAt) return;
+    const startedAt = new Date(turnStartedAt).getTime();
+
+    function tick() {
+      const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+      const remaining = Math.max(0, TURN_LIMIT - elapsed);
+      setSecondsLeft(remaining);
+      if (remaining === 0 && isMyTurn) {
+        handleAutoAdvance();
+      }
+    }
+
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [turnStartedAt, isMyTurn, handleAutoAdvance]);
+
   const options: (1 | 2 | 3)[] = [1, 2, 3];
+  const timerPct = (secondsLeft / TURN_LIMIT) * 100;
+  const timerColor = secondsLeft <= 5 ? '#EF4444' : secondsLeft <= 8 ? '#F59E0B' : '#7C3AED';
 
   function wouldHit21(by: number) {
     return count + by === 21;
@@ -55,7 +86,6 @@ export default function CountingGame({ gameState, myPlayerId, onAdvance }: Props
               {count}
             </span>
           </div>
-          {/* Target indicator */}
           <div className="absolute -bottom-6 text-xs text-white/30">
             of 21
           </div>
@@ -104,6 +134,24 @@ export default function CountingGame({ gameState, myPlayerId, onAdvance }: Props
             />
           )}
         </div>
+
+        {/* Turn timer */}
+        {turnStartedAt && (
+          <div className="w-full max-w-xs">
+            <div className="flex justify-between text-xs mb-1" style={{ color: timerColor }}>
+              <span className={secondsLeft <= 5 ? 'animate-pulse font-bold' : ''}>
+                {isMyTurn ? (secondsLeft <= 5 ? '⏰ Pick now!' : 'Your time') : `${currentPlayer?.name}'s time`}
+              </span>
+              <span className="font-bold">{secondsLeft}s</span>
+            </div>
+            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#252532' }}>
+              <div
+                className="h-full rounded-full transition-all duration-1000"
+                style={{ width: `${timerPct}%`, background: timerColor, boxShadow: secondsLeft <= 5 ? `0 0 6px ${timerColor}` : 'none' }}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Action buttons */}

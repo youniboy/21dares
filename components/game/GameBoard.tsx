@@ -1,6 +1,6 @@
 'use client';
 
-import type { GameState, CardType, GameCard, BurningHouseCard, DoubleDareCard } from '@/types/game';
+import type { GameState, CardType, GameCard, BurningHouseCard, DoubleDareCard, Player, ProposedChallenge } from '@/types/game';
 import { supabase } from '@/lib/supabase';
 import CountingGame from './CountingGame';
 import CardSelector from './CardSelector';
@@ -29,6 +29,7 @@ export default function GameBoard({ gameState, myPlayerId, onUpdateGameState }: 
   const mode = gameState.mode ?? 'normal';
   const loser = loserPlayerIndex !== null ? players[loserPlayerIndex] : null;
   const isLoser = loser?.id === myPlayerId;
+  const myPlayer = players.find((p) => p.id === myPlayerId);
 
   function patchCard(updates: Partial<GameCard>) {
     onUpdateGameState({ currentCard: { ...currentCard!, ...updates } as GameCard });
@@ -38,15 +39,23 @@ export default function GameBoard({ gameState, myPlayerId, onUpdateGameState }: 
   function handleAdvance(by: 1 | 2 | 3) {
     const newCount = count + by;
     const nextIndex = (countingPlayerIndex + 1) % players.length;
+    const now = new Date().toISOString();
     if (newCount === 21) {
-      onUpdateGameState({ count: newCount, loserPlayerIndex: countingPlayerIndex, phase: 'card-selection' });
+      onUpdateGameState({
+        count: newCount,
+        loserPlayerIndex: countingPlayerIndex,
+        phase: 'card-selection',
+        cardSelectionStartedAt: now,
+        turnStartedAt: null,
+      });
     } else {
-      onUpdateGameState({ count: newCount, countingPlayerIndex: nextIndex });
+      onUpdateGameState({ count: newCount, countingPlayerIndex: nextIndex, turnStartedAt: now });
     }
   }
 
   // ── Loser picks card type ────────────────────────────────────────────────
   function handleCardTypeSelected(type: CardType) {
+    const now = new Date().toISOString();
     let card: GameCard;
     switch (type) {
       case 'truth':         card = getRandomTruth(mode); break;
@@ -55,10 +64,71 @@ export default function GameBoard({ gameState, myPlayerId, onUpdateGameState }: 
       case 'situation':     card = getRandomSituation(mode); break;
       case 'burning-house': card = getRandomBurningHouse(mode); break;
     }
-    onUpdateGameState({ phase: 'card-active', currentCard: card });
+    // Record the loser's card type to prevent consecutive same choice
+    const updatedPlayers = players.map((p, i) =>
+      i === loserPlayerIndex ? { ...p, lastCardType: type } : p
+    );
+    onUpdateGameState({
+      phase: 'card-active',
+      currentCard: { ...card, setupStartedAt: now },
+      players: updatedPlayers,
+      cardSelectionStartedAt: null,
+    });
   }
 
-  // ── Others send the challenge ────────────────────────────────────────────
+  // ── Proposal submitted by non-loser ─────────────────────────────────────
+  function handleProposeChallenge(text: string, isPreset: boolean) {
+    const card = currentCard!;
+    const existing = (card.proposedChallenges ?? []).filter((p) => p.playerId !== myPlayerId);
+    const newProposal: ProposedChallenge = {
+      id: `${myPlayerId}-${Date.now()}`,
+      playerId: myPlayerId,
+      playerName: myPlayer?.name ?? '',
+      text,
+      votes: [myPlayerId],
+      isPreset,
+    };
+    patchCard({ proposedChallenges: [...existing, newProposal] });
+  }
+
+  // ── Vote for a proposal ──────────────────────────────────────────────────
+  function handleVoteForProposal(proposalId: string) {
+    const card = currentCard!;
+    const updated = (card.proposedChallenges ?? []).map((p) => {
+      const votes = p.votes.filter((v) => v !== myPlayerId);
+      if (p.id === proposalId) votes.push(myPlayerId);
+      return { ...p, votes };
+    });
+    patchCard({ proposedChallenges: updated });
+  }
+
+  // ── Setup timer expired — auto-select highest voted proposal ─────────────
+  function handleSetupTimerUp() {
+    if (currentCard?.cardPhase !== 'setup') return;
+    const proposals = currentCard?.proposedChallenges ?? [];
+    let challenge: string;
+    if (proposals.length === 0) {
+      // Fall back to preset
+      const card = currentCard!;
+      switch (card.type) {
+        case 'truth':    challenge = card.suggestion; break;
+        case 'dare':     challenge = card.suggestion; break;
+        case 'double-dare': challenge = `${(card as DoubleDareCard).suggestion1} / ${(card as DoubleDareCard).suggestion2}`; break;
+        case 'situation': challenge = card.suggestion; break;
+        case 'burning-house': challenge = card.options.join(' / '); break;
+      }
+    } else {
+      const best = proposals.reduce((a, b) => b.votes.length > a.votes.length ? b : a);
+      challenge = best.text;
+    }
+    patchCard({
+      customChallenge: challenge,
+      cardPhase: 'respond',
+      respondStartedAt: new Date().toISOString(),
+    });
+  }
+
+  // ── Others send the challenge (now called by timer or manual) ────────────
   function handleSendChallenge(challenge: string) {
     patchCard({
       customChallenge: challenge,
@@ -105,12 +175,49 @@ export default function GameBoard({ gameState, myPlayerId, onUpdateGameState }: 
     });
   }
 
-  // ── Others judge ─────────────────────────────────────────────────────────
-  function handleAccept() {
-    cleanupMedia();
-    patchCard({ verdict: 'accepted', cardPhase: 'consequence', consequenceStartedAt: new Date().toISOString() });
+  // ── Consensus judge: vote accept ─────────────────────────────────────────
+  function handleVoteAccept() {
+    const card = currentCard!;
+    const judgeVotes = card.judgeVotes ?? { accept: [], reject: [] };
+    if (judgeVotes.accept.includes(myPlayerId) || judgeVotes.reject.includes(myPlayerId)) return;
+
+    const newAccept = [...judgeVotes.accept, myPlayerId];
+    const judgeCount = players.length - 1;
+    const majority = Math.ceil(judgeCount / 2);
+
+    if (newAccept.length >= majority) {
+      cleanupMedia();
+      patchCard({
+        judgeVotes: { ...judgeVotes, accept: newAccept },
+        verdict: 'accepted',
+        cardPhase: 'consequence',
+        consequenceStartedAt: new Date().toISOString(),
+      });
+    } else {
+      patchCard({ judgeVotes: { ...judgeVotes, accept: newAccept } });
+    }
   }
 
+  // ── Consensus judge: vote reject ─────────────────────────────────────────
+  function handleVoteReject() {
+    const card = currentCard!;
+    const judgeVotes = card.judgeVotes ?? { accept: [], reject: [] };
+    if (judgeVotes.accept.includes(myPlayerId) || judgeVotes.reject.includes(myPlayerId)) return;
+
+    const newReject = [...judgeVotes.reject, myPlayerId];
+    const judgeCount = players.length - 1;
+    const majority = Math.ceil(judgeCount / 2);
+
+    if (newReject.length >= majority) {
+      cleanupMedia();
+      // Reject majority — stay in judge phase, now show consequence input
+      patchCard({ judgeVotes: { ...judgeVotes, reject: newReject }, verdict: 'consequence' });
+    } else {
+      patchCard({ judgeVotes: { ...judgeVotes, reject: newReject } });
+    }
+  }
+
+  // ── Consequence submitted by non-loser ───────────────────────────────────
   function handleSetConsequence(consequence: string) {
     cleanupMedia();
     patchCard({ verdict: 'consequence', consequence, cardPhase: 'consequence', consequenceStartedAt: new Date().toISOString() });
@@ -118,7 +225,7 @@ export default function GameBoard({ gameState, myPlayerId, onUpdateGameState }: 
 
   // ── Rules acknowledged ───────────────────────────────────────────────────
   function handleRulesAcknowledged() {
-    onUpdateGameState({ phase: 'counting' });
+    onUpdateGameState({ phase: 'counting', turnStartedAt: new Date().toISOString() });
   }
 
   // ── Proof submitted by loser ─────────────────────────────────────────────
@@ -144,20 +251,27 @@ export default function GameBoard({ gameState, myPlayerId, onUpdateGameState }: 
       phase: 'counting',
       count: 0,
       round: gameState.round + 1,
+      turnStartedAt: new Date().toISOString(),
     });
   }
 
-  // ── End round ────────────────────────────────────────────────────────────
+  // ── End round — merge pending players ────────────────────────────────────
   function handleNextRound() {
     cleanupMedia();
     const nextCountingIndex = loserPlayerIndex ?? 0;
+    const pending = gameState.pendingPlayers ?? [];
+    // Merge pending players into active players for next round
+    const newPlayers: Player[] = [...players, ...pending];
     onUpdateGameState({
       phase: 'counting',
       count: 0,
-      countingPlayerIndex: nextCountingIndex,
+      countingPlayerIndex: Math.min(nextCountingIndex, newPlayers.length - 1),
       loserPlayerIndex: null,
       currentCard: null,
       round: gameState.round + 1,
+      pendingPlayers: [],
+      players: newPlayers,
+      turnStartedAt: new Date().toISOString(),
     });
   }
 
@@ -169,7 +283,6 @@ export default function GameBoard({ gameState, myPlayerId, onUpdateGameState }: 
       ...(currentCard as BurningHouseCard),
       names,
       assignments,
-      // Move to respond phase once names are submitted
       ...(namesSubmitted && !currentCard.names ? { cardPhase: 'respond' } : {}),
     });
   }
@@ -185,11 +298,24 @@ export default function GameBoard({ gameState, myPlayerId, onUpdateGameState }: 
   }
 
   if (phase === 'counting') {
-    return <CountingGame gameState={gameState} myPlayerId={myPlayerId} onAdvance={handleAdvance} />;
+    return (
+      <CountingGame
+        gameState={gameState}
+        myPlayerId={myPlayerId}
+        onAdvance={handleAdvance}
+      />
+    );
   }
 
   if (phase === 'card-selection' && loser) {
-    return <CardSelector loser={loser} myPlayerId={myPlayerId} onSelect={handleCardTypeSelected} />;
+    return (
+      <CardSelector
+        loser={loser}
+        myPlayerId={myPlayerId}
+        cardSelectionStartedAt={gameState.cardSelectionStartedAt}
+        onSelect={handleCardTypeSelected}
+      />
+    );
   }
 
   if (phase === 'card-active' && currentCard && loser) {
@@ -217,7 +343,11 @@ export default function GameBoard({ gameState, myPlayerId, onUpdateGameState }: 
           card={currentCard}
           loserName={loser.name}
           isLoser={isLoser}
-          onSendChallenge={handleSendChallenge}
+          myPlayerId={myPlayerId}
+          myPlayerName={myPlayer?.name ?? ''}
+          onProposeChallenge={handleProposeChallenge}
+          onVoteForProposal={handleVoteForProposal}
+          onSetupTimerUp={handleSetupTimerUp}
         />
       );
     }
@@ -242,7 +372,11 @@ export default function GameBoard({ gameState, myPlayerId, onUpdateGameState }: 
           loserName={loser.name}
           isLoser={isLoser}
           timedOut={timedOut}
-          onAccept={handleAccept}
+          myPlayerId={myPlayerId}
+          players={players}
+          loserPlayerIndex={loserPlayerIndex ?? 0}
+          onVoteAccept={handleVoteAccept}
+          onVoteReject={handleVoteReject}
           onSetConsequence={handleSetConsequence}
         />
       );

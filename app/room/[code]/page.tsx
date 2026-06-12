@@ -98,14 +98,15 @@ export default function RoomPage({ params }: Props) {
   useEffect(() => {
     if (!room) return;
     const gs = room.game_state;
-    const stillInRoom = gs.players.some((p) => p.id === myPlayerId);
-    if (!stillInRoom) {
+    const inActivePlayers = gs.players.some((p) => p.id === myPlayerId);
+    const inPending = (gs.pendingPlayers ?? []).some((p) => p.id === myPlayerId);
+    if (!inActivePlayers && !inPending) {
       intentionalExitRef.current = true;
       router.push('/?kicked=1');
       return;
     }
     // Detect when I'm the last player left mid-game (others left or were kicked)
-    if (gs.status === 'playing' && gs.players.length === 1) {
+    if (gs.status === 'playing' && gs.players.length === 1 && inActivePlayers) {
       setIsAlone(true);
       const t = setTimeout(() => { deleteRoom(); }, 3000);
       return () => clearTimeout(t);
@@ -124,7 +125,14 @@ export default function RoomPage({ params }: Props) {
   }
 
   async function removeMe(gs: GameState) {
-    const updatedPlayers = gs.players.filter((p) => p.id !== myPlayerId);
+    const leavingPlayer = gs.players.find((p) => p.id === myPlayerId);
+    let updatedPlayers = gs.players.filter((p) => p.id !== myPlayerId);
+
+    // If the host is leaving and others remain, promote the first remaining player
+    if (leavingPlayer?.isHost && updatedPlayers.length > 0) {
+      updatedPlayers = updatedPlayers.map((p, i) => i === 0 ? { ...p, isHost: true } : p);
+    }
+
     intentionalExitRef.current = true;
     if (updatedPlayers.length === 0) {
       await fetch(`/api/rooms/${code}`, { method: 'DELETE' });
@@ -238,6 +246,50 @@ export default function RoomPage({ params }: Props) {
 
   const { game_state } = room;
   const isInGame = game_state.status === 'playing';
+  const amIPending = (game_state.pendingPlayers ?? []).some((p) => p.id === myPlayerId);
+
+  // Pending lobby — waiting for next round to join
+  if (amIPending) {
+    const me = game_state.pendingPlayers!.find((p) => p.id === myPlayerId)!;
+    return (
+      <div className="flex flex-col min-h-svh items-center justify-center px-4 text-center gap-6">
+        <div className="text-6xl animate-pulse">⏳</div>
+        <div>
+          <p className="text-white font-black text-2xl">Waiting to join</p>
+          <p className="text-white/40 text-sm mt-2">
+            The game is in progress. You&apos;ll be added at the start of the next round.
+          </p>
+        </div>
+        <div className="w-full max-w-xs rounded-2xl p-4 border border-white/10 text-left" style={{ background: '#1a1a24' }}>
+          <p className="text-xs text-white/40 uppercase tracking-widest font-semibold mb-3">In the lobby</p>
+          <div className="space-y-2">
+            {game_state.pendingPlayers!.map((p) => (
+              <div key={p.id} className="flex items-center gap-3 py-2 px-3 rounded-xl" style={{ background: '#252532' }}>
+                <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0" style={{ background: p.color }}>
+                  {p.name[0].toUpperCase()}
+                </div>
+                <span className="text-white text-sm font-medium flex-1">{p.name}</span>
+                {p.id === myPlayerId && (
+                  <span className="text-xs text-white/40 px-1.5 py-0.5 rounded-md" style={{ background: '#1a1a24' }}>You</span>
+                )}
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-white/25 text-center mt-3">Active players: {game_state.players.length}</p>
+        </div>
+        <div
+          className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin"
+          style={{ borderColor: me.color, borderTopColor: 'transparent' }}
+        />
+        <button
+          onClick={() => { intentionalExitRef.current = true; router.push('/'); }}
+          className="text-white/30 text-sm underline underline-offset-2"
+        >
+          Leave
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="relative">

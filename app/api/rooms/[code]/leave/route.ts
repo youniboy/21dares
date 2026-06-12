@@ -36,9 +36,15 @@ export async function POST(req: NextRequest, { params }: Params) {
     await supabase.from('rooms').delete().eq('code', code.toUpperCase());
     return NextResponse.json({ ok: true });
   } else {
-    const newCountingIndex = Math.min(gs.countingPlayerIndex, updatedPlayers.length - 1);
+    // If the host is leaving and others remain, promote the first remaining player
+    let finalPlayers = updatedPlayers;
+    if (isHost && finalPlayers.length > 0) {
+      finalPlayers = finalPlayers.map((p, i) => i === 0 ? { ...p, isHost: true } : p);
+    }
+
+    const newCountingIndex = Math.min(gs.countingPlayerIndex, finalPlayers.length - 1);
     const newLoserIndex =
-      gs.loserPlayerIndex !== null && gs.loserPlayerIndex >= updatedPlayers.length
+      gs.loserPlayerIndex !== null && gs.loserPlayerIndex >= finalPlayers.length
         ? null
         : gs.loserPlayerIndex;
 
@@ -47,7 +53,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       .update({
         game_state: {
           ...gs,
-          players: updatedPlayers,
+          players: finalPlayers,
           countingPlayerIndex: newCountingIndex,
           loserPlayerIndex: newLoserIndex,
         },
